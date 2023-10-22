@@ -363,7 +363,40 @@ class FirebaseAuth constructor(val app: FirebaseApp) : InternalAuthProvider {
         idTokenListeners.remove(listener)
     }
 
-    fun signInWithEmailAndPassword(email: String, password: String): Task<AuthResult> = TODO()
+    fun signInWithEmailAndPassword(email: String, password: String): Task<AuthResult> {
+        val source = TaskCompletionSource<AuthResult>()
+        val body = RequestBody.create(json, JsonObject(mapOf(
+            "returnSecureToken" to JsonPrimitive(true),
+            "email" to email,
+            "password" to password
+        )).toString())
+        val request = Request.Builder()
+            .url("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=" + app.options.apiKey)
+            .post(body)
+            .build()
+        client.newCall(request).enqueue(object : Callback {
+
+            override fun onFailure(request: Request, e: IOException) {
+                source.setException(FirebaseException(e.toString(), e))
+            }
+
+            @Throws(IOException::class)
+            override fun onResponse(response: Response) {
+                if (!response.isSuccessful) {
+                    source.setException(FirebaseAuthInvalidUserException(
+                        response.message(),
+                        formatErrorMessage("accounts:signInWithPassword", request, response)
+                    ))
+                } else {
+                    val body = response.body().use { it.string() }
+                    user = FirebaseUserImpl(app, jsonParser.parseToJsonElement(body).jsonObject, true)
+                    source.setResult(AuthResult { user })
+                }
+            }
+        })
+        return source.task
+    }
+
     fun sendPasswordResetEmail(email: String, settings: ActionCodeSettings?): Task<Unit> = TODO()
     fun createUserWithEmailAndPassword(email: String, password: String): Task<AuthResult> = TODO()
     fun signInWithCredential(authCredential: AuthCredential): Task<AuthResult> = TODO()
